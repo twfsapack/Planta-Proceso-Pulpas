@@ -1,0 +1,206 @@
+FUNCTION_BLOCK "FB_CappingProcess"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT 
+      Start : Bool;   // Comando de inicio del proceso
+      Stop : Bool;   // Comando de parada del proceso
+      Reset : Bool;   // Reset de alarmas
+      ManualMode : Bool;   // Modo manual
+      ContainerPresent : Bool;   // Sensor de presencia de envase
+      CapPresent : Bool;   // Sensor de presencia de tapa
+      TorqueSensor : Real;   // Sensor de torque (Nm)
+      PositionSensor : Real;   // Sensor de posición (mm)
+      SetTorque : Real;   // Torque objetivo (Nm)
+   END_VAR
+
+   VAR_OUTPUT 
+      CapFeeder : Bool;   // Alimentador de tapas
+      CappingMotor : Bool;   // Motor de tapado
+      ConveyorMotor : Bool;   // Motor de banda transportadora
+      ProcessActive : Bool;   // Proceso activo
+      ProcessComplete : Bool;   // Proceso completado
+      AlarmActive : Bool;   // Alarma activa
+      CurrentTorque : Real;   // Torque actual
+      ProcessTime : Time;   // Tiempo de proceso
+      QualityOK : Bool;   // Control de calidad OK
+   END_VAR
+
+   VAR 
+      State : Int := 0;   // Estado del proceso
+      Timer : TON;   // Temporizador
+      StartTime : Time;   // Tiempo de inicio
+      AlarmCode : Int := 0;   // Código de alarma
+      TorqueReached : Bool := FALSE;   // Torque alcanzado
+      PositionReached : Bool := FALSE;   // Posición alcanzada
+      RetryCount : Int := 0;   // Contador de reintentos
+   END_VAR
+
+   VAR_TEMP 
+      TempTime : Time;
+   END_VAR
+
+BEGIN
+   // Reset de alarmas
+   IF Reset THEN
+      AlarmActive := FALSE;
+      AlarmCode := 0;
+      State := 0;
+      ProcessComplete := FALSE;
+      RetryCount := 0;
+      QualityOK := FALSE;
+   END_IF;
+
+   // Verificación de condiciones de seguridad
+   IF NOT ContainerPresent AND ProcessActive THEN
+      AlarmActive := TRUE;
+      AlarmCode := 2001; // Envase no presente durante tapado
+      State := 99; // Estado de error
+   END_IF;
+
+   // Actualizar valores actuales
+   CurrentTorque := TorqueSensor;
+
+   // Máquina de estados del proceso de tapado
+   CASE State OF
+      0: // Estado inicial - Espera
+         ProcessActive := FALSE;
+         ProcessComplete := FALSE;
+         CapFeeder := FALSE;
+         CappingMotor := FALSE;
+         ConveyorMotor := FALSE;
+         TorqueReached := FALSE;
+         PositionReached := FALSE;
+         QualityOK := FALSE;
+
+         IF Start AND ContainerPresent AND NOT AlarmActive THEN
+            State := 10;
+            StartTime := TIME();
+         END_IF;
+
+      10: // Posicionamiento del envase
+         ConveyorMotor := TRUE;
+         Timer(IN := TRUE, PT := T#2s);
+
+         IF Timer.Q THEN
+            Timer(IN := FALSE);
+            ConveyorMotor := FALSE;
+            State := 20;
+         END_IF;
+
+      20: // Alimentación de tapa
+         ProcessActive := TRUE;
+         CapFeeder := TRUE;
+         Timer(IN := TRUE, PT := T#3s);
+
+         IF CapPresent THEN
+            Timer(IN := FALSE);
+            CapFeeder := FALSE;
+            State := 30;
+         ELSIF Timer.Q THEN
+            Timer(IN := FALSE);
+            CapFeeder := FALSE;
+            AlarmActive := TRUE;
+            AlarmCode := 2002; // Falta de tapas
+            State := 99;
+         END_IF;
+
+      30: // Proceso de tapado
+         CappingMotor := TRUE;
+
+         // Verificar posición
+         IF PositionSensor <= 5.0 THEN // Posición de contacto
+            PositionReached := TRUE;
+         END_IF;
+
+         // Verificar torque
+         IF TorqueSensor >= SetTorque AND PositionReached THEN
+            TorqueReached := TRUE;
+            State := 40;
+         END_IF;
+
+         // Verificar sobre-torque
+         IF TorqueSensor > (SetTorque * 1.2) THEN
+            AlarmActive := TRUE;
+            AlarmCode := 2003; // Sobre-torque
+            State := 99;
+         END_IF;
+
+         // Timeout de seguridad (10 segundos)
+         TempTime := TIME() - StartTime;
+         IF TempTime > T#10s THEN
+            AlarmActive := TRUE;
+            AlarmCode := 2004; // Timeout de tapado
+            State := 99;
+         END_IF;
+
+      40: // Finalización del tapado
+         CappingMotor := FALSE;
+         Timer(IN := TRUE, PT := T#1s);
+
+         IF Timer.Q THEN
+            Timer(IN := FALSE);
+            State := 50;
+         END_IF;
+
+      50: // Control de calidad
+         // Verificar que el torque se mantenga
+         IF TorqueSensor >= (SetTorque * 0.9) AND TorqueSensor <= (SetTorque * 1.1) THEN
+            QualityOK := TRUE;
+            State := 60;
+         ELSE
+            // Reintento si no se alcanzó la calidad
+            RetryCount := RetryCount + 1;
+            IF RetryCount < 3 THEN
+               State := 30; // Volver a intentar tapado
+            ELSE
+               AlarmActive := TRUE;
+               AlarmCode := 2005; // Falla de calidad
+               State := 99;
+            END_IF;
+         END_IF;
+
+      60: // Proceso completado
+         ProcessActive := FALSE;
+         ProcessComplete := TRUE;
+         ProcessTime := TIME() - StartTime;
+
+         // Mover envase a siguiente estación
+         ConveyorMotor := TRUE;
+         Timer(IN := TRUE, PT := T#3s);
+
+         IF Timer.Q THEN
+            Timer(IN := FALSE);
+            ConveyorMotor := FALSE;
+            State := 0; // Volver al estado inicial
+         END_IF;
+
+      99: // Estado de error
+         ProcessActive := FALSE;
+         CapFeeder := FALSE;
+         CappingMotor := FALSE;
+         ConveyorMotor := FALSE;
+         QualityOK := FALSE;
+
+         IF Reset THEN
+            State := 0;
+         END_IF;
+   END_CASE;
+
+   // Modo manual
+   IF ManualMode THEN
+      CapFeeder := Start;
+      CappingMotor := FALSE;
+      ConveyorMotor := FALSE;
+      ProcessActive := Start;
+   END_IF;
+
+   // Parada de emergencia
+   IF Stop THEN
+      CapFeeder := FALSE;
+      CappingMotor := FALSE;
+      ConveyorMotor := FALSE;
+      ProcessActive := FALSE;
+      State := 0;
+   END_IF;
+
+END_FUNCTION_BLOCK

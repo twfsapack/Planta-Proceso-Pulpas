@@ -1,0 +1,124 @@
+Name,Data type,Logical address,Comment
+ProcessData,UDT_ProcessData,,Estructura principal de datos del proceso
+FB_Filling_Instance,FB_FillingProcess,,Instancia del bloque de llenado
+FB_Capping_Instance,FB_CappingProcess,,Instancia del bloque de tapado
+FB_ShrinkTunnel_Instance,FB_ShrinkTunnelProcess,,Instancia del bloque de túnel de encogido
+
+# Entradas digitales - Sensores
+I_Container_Filling,Bool,%I0.0,Sensor de presencia de envase en estación de llenado
+I_Container_Capping,Bool,%I0.1,Sensor de presencia de envase en estación de tapado
+I_Container_Tunnel,Bool,%I0.2,Sensor de presencia de envase en túnel de encogido
+I_Cap_Present,Bool,%I0.3,Sensor de presencia de tapa
+I_Emergency_Stop,Bool,%I0.4,Botón de parada de emergencia
+
+# Entradas analógicas - Sensores
+AI_Level_Sensor,Real,%IW10,Sensor de nivel de llenado (0-100%)
+AI_Flow_Sensor,Real,%IW12,Sensor de flujo (L/min)
+AI_Torque_Sensor,Real,%IW14,Sensor de torque (Nm)
+AI_Position_Sensor,Real,%IW16,Sensor de posición del cabezal de tapado (mm)
+AI_Temp_Zone1,Real,%IW20,Sensor de temperatura zona 1 del túnel (°C)
+AI_Temp_Zone2,Real,%IW22,Sensor de temperatura zona 2 del túnel (°C)
+AI_Temp_Zone3,Real,%IW24,Sensor de temperatura zona 3 del túnel (°C)
+
+# Salidas digitales - Actuadores
+Q_Filling_Valve,Bool,%Q0.0,Válvula de llenado
+Q_Cap_Feeder,Bool,%Q0.1,Alimentador de tapas
+Q_Capping_Motor,Bool,%Q0.2,Motor de tapado
+Q_Conveyor_Filling,Bool,%Q0.3,Motor de banda transportadora - Llenado
+Q_Conveyor_Capping,Bool,%Q0.4,Motor de banda transportadora - Tapado
+Q_Conveyor_Tunnel,Bool,%Q0.5,Motor de banda transportadora - Túnel
+Q_Heater_Zone1,Bool,%Q0.6,Calentador zona 1
+Q_Heater_Zone2,Bool,%Q0.7,Calentador zona 2
+Q_Heater_Zone3,Bool,%Q1.0,Calentador zona 3
+Q_Tunnel_Fan,Bool,%Q1.1,Ventilador del túnel
+Q_Process_Active,Bool,%Q1.2,Indicador de proceso activo
+Q_System_Ready,Bool,%Q1.3,Indicador de sistema listo
+Q_Alarm_General,Bool,%Q1.4,Indicador de alarma general
+
+# Variables de memoria - Alarmas
+M_Alarm_Filling,Bool,%M10.0,Alarma del proceso de llenado
+M_Alarm_Capping,Bool,%M10.1,Alarma del proceso de tapado
+M_Alarm_Tunnel,Bool,%M10.2,Alarma del proceso de túnel de encogido
+
+# Variables HMI - Comandos
+HMI_Auto_Mode,Bool,%M20.0,Comando modo automático desde HMI
+HMI_Manual_Mode,Bool,%M20.1,Comando modo manual desde HMI
+HMI_Start_Filling,Bool,%M20.2,Comando inicio llenado desde HMI
+HMI_Stop_Filling,Bool,%M20.3,Comando parada llenado desde HMI
+HMI_Reset_Filling,Bool,%M20.4,Comando reset llenado desde HMI
+HMI_Start_Capping,Bool,%M20.5,Comando inicio tapado desde HMI
+HMI_Stop_Capping,Bool,%M20.6,Comando parada tapado desde HMI
+HMI_Reset_Capping,Bool,%M20.7,Comando reset tapado desde HMI
+HMI_Start_Tunnel,Bool,%M21.0,Comando inicio túnel desde HMI
+HMI_Stop_Tunnel,Bool,%M21.1,Comando parada túnel desde HMI
+HMI_Reset_Tunnel,Bool,%M21.2,Comando reset túnel desde HMI
+
+# Variables de datos - Setpoints
+SP_Volume,Real,%MD100,Setpoint de volumen (L)
+SP_Torque,Real,%MD104,Setpoint de torque (Nm)
+SP_Temperature,Real,%MD108,Setpoint de temperatura (°C)
+SP_ProcessTime,Time,%MD112,Setpoint de tiempo de proceso
+SP_ConveyorSpeed,Real,%MD116,Setpoint de velocidad de banda (m/min)
+
+# Variables de datos - Valores actuales
+PV_Volume,Real,%MD200,Valor actual de volumen (L)
+PV_FlowRate,Real,%MD204,Valor actual de flujo (L/min)
+PV_Level,Real,%MD208,Valor actual de nivel (%)
+PV_Torque,Real,%MD212,Valor actual de torque (Nm)
+PV_Position,Real,%MD216,Valor actual de posición (mm)
+PV_Temp_Avg,Real,%MD220,Valor actual de temperatura promedio (°C)
+PV_ProcessTime,Time,%MD224,Valor actual de tiempo de proceso
+
+# Variables de estado
+ST_Filling_Active,Bool,%M30.0,Estado: Proceso de llenado activo
+ST_Filling_Complete,Bool,%M30.1,Estado: Proceso de llenado completado
+ST_Capping_Active,Bool,%M30.2,Estado: Proceso de tapado activo
+ST_Capping_Complete,Bool,%M30.3,Estado: Proceso de tapado completado
+ST_Tunnel_Active,Bool,%M30.4,Estado: Proceso de túnel activo
+ST_Tunnel_Complete,Bool,%M30.5,Estado: Proceso de túnel completado
+ST_Quality_OK,Bool,%M30.6,Estado: Control de calidad OK
+ST_System_Ready,Bool,%M30.7,Estado: Sistema listo
+
+# Contadores y estadísticas
+CNT_Production,DInt,%MD300,Contador de producción total
+CNT_Alarms,Int,%MW304,Contador de alarmas
+CNT_Filling_Cycles,DInt,%MD308,Contador de ciclos de llenado
+CNT_Capping_Cycles,DInt,%MD312,Contador de ciclos de tapado
+CNT_Tunnel_Cycles,DInt,%MD316,Contador de ciclos de túnel
+
+# Variables de diagnóstico
+DIAG_Last_Alarm_Code,Int,%MW400,Código de última alarma
+DIAG_Last_Alarm_Time,Time,%MD404,Tiempo de última alarma
+DIAG_Cycle_Time,Time,%MD408,Tiempo de ciclo actual
+DIAG_Efficiency,Real,%MD412,Eficiencia del proceso (%)
+DIAG_Uptime,Time,%MD416,Tiempo de funcionamiento
+DIAG_Downtime,Time,%MD420,Tiempo de parada
+
+# Variables de receta
+RECIPE_Product_Type,Int,%MW500,Tipo de producto (1-10)
+RECIPE_Volume_SP,Real,%MD504,Receta: Volumen objetivo (L)
+RECIPE_Torque_SP,Real,%MD508,Receta: Torque objetivo (Nm)
+RECIPE_Temp_SP,Real,%MD512,Receta: Temperatura objetivo (°C)
+RECIPE_Time_SP,Time,%MD516,Receta: Tiempo de proceso objetivo
+RECIPE_Speed_SP,Real,%MD520,Receta: Velocidad de banda objetivo (m/min)
+RECIPE_Quality_Tolerance,Real,%MD524,Receta: Tolerancia de calidad (%)
+
+# Variables de mantenimiento
+MAINT_Filling_Hours,Real,%MD600,Horas de operación - Llenado
+MAINT_Capping_Hours,Real,%MD604,Horas de operación - Tapado
+MAINT_Tunnel_Hours,Real,%MD608,Horas de operación - Túnel
+MAINT_Next_Service,Time,%MD612,Próximo mantenimiento programado
+MAINT_Service_Required,Bool,%M61.0,Mantenimiento requerido
+
+# Variables de seguridad
+SAFETY_Emergency_Active,Bool,%M70.0,Parada de emergencia activa
+SAFETY_Door_Open,Bool,%M70.1,Puerta de seguridad abierta
+SAFETY_Light_Curtain,Bool,%M70.2,Cortina de luz interrumpida
+SAFETY_Pressure_OK,Bool,%M70.3,Presión de aire OK
+SAFETY_Temperature_OK,Bool,%M70.4,Temperatura dentro de límites seguros
+
+# Variables de comunicación
+COMM_HMI_Connected,Bool,%M80.0,HMI conectado
+COMM_SCADA_Connected,Bool,%M80.1,SCADA conectado
+COMM_MES_Connected,Bool,%M80.2,MES conectado
+COMM_Data_Exchange,Bool,%M80.3,Intercambio de datos activo

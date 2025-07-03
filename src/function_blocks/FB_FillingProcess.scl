@@ -1,0 +1,157 @@
+FUNCTION_BLOCK "FB_FillingProcess"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT 
+      Start : Bool;   // Comando de inicio del proceso
+      Stop : Bool;   // Comando de parada del proceso
+      Reset : Bool;   // Reset de alarmas
+      ManualMode : Bool;   // Modo manual
+      SetVolume : Real;   // Volumen objetivo (litros)
+      ContainerPresent : Bool;   // Sensor de presencia de envase
+      LevelSensor : Real;   // Sensor de nivel (0-100%)
+      FlowSensor : Real;   // Sensor de flujo (L/min)
+   END_VAR
+
+   VAR_OUTPUT 
+      FillingValve : Bool;   // Válvula de llenado
+      ConveyorMotor : Bool;   // Motor de banda transportadora
+      ProcessActive : Bool;   // Proceso activo
+      ProcessComplete : Bool;   // Proceso completado
+      AlarmActive : Bool;   // Alarma activa
+      CurrentVolume : Real;   // Volumen actual
+      ProcessTime : Time;   // Tiempo de proceso
+   END_VAR
+
+   VAR 
+      State : Int := 0;   // Estado del proceso
+      Timer : TON;   // Temporizador
+      VolumeCounter : Real := 0.0;   // Contador de volumen
+      StartTime : Time;   // Tiempo de inicio
+      AlarmCode : Int := 0;   // Código de alarma
+      LastFlowValue : Real := 0.0;   // Último valor de flujo
+   END_VAR
+
+   VAR_TEMP 
+      TempTime : Time;
+   END_VAR
+
+BEGIN
+   // Reset de alarmas
+   IF Reset THEN
+      AlarmActive := FALSE;
+      AlarmCode := 0;
+      State := 0;
+      VolumeCounter := 0.0;
+      ProcessComplete := FALSE;
+   END_IF;
+
+   // Verificación de condiciones de seguridad
+   IF NOT ContainerPresent AND ProcessActive THEN
+      AlarmActive := TRUE;
+      AlarmCode := 1001; // Envase no presente durante llenado
+      State := 99; // Estado de error
+   END_IF;
+
+   // Máquina de estados del proceso de llenado
+   CASE State OF
+      0: // Estado inicial - Espera
+         ProcessActive := FALSE;
+         ProcessComplete := FALSE;
+         FillingValve := FALSE;
+         ConveyorMotor := FALSE;
+         VolumeCounter := 0.0;
+
+         IF Start AND ContainerPresent AND NOT AlarmActive THEN
+            State := 10;
+            StartTime := TIME();
+         END_IF;
+
+      10: // Posicionamiento del envase
+         ConveyorMotor := TRUE;
+         Timer(IN := TRUE, PT := T#2s);
+
+         IF Timer.Q THEN
+            Timer(IN := FALSE);
+            ConveyorMotor := FALSE;
+            State := 20;
+         END_IF;
+
+      20: // Inicio del llenado
+         ProcessActive := TRUE;
+         FillingValve := TRUE;
+
+         // Cálculo del volumen basado en flujo
+         IF FlowSensor > 0.1 THEN
+            VolumeCounter := VolumeCounter + (FlowSensor * 0.0167); // Conversión a litros por ciclo
+         END_IF;
+
+         CurrentVolume := VolumeCounter;
+
+         // Verificar si se alcanzó el volumen objetivo
+         IF VolumeCounter >= SetVolume THEN
+            State := 30;
+         END_IF;
+
+         // Verificar nivel máximo de seguridad
+         IF LevelSensor > 95.0 THEN
+            State := 30;
+         END_IF;
+
+         // Timeout de seguridad (30 segundos)
+         TempTime := TIME() - StartTime;
+         IF TempTime > T#30s THEN
+            AlarmActive := TRUE;
+            AlarmCode := 1002; // Timeout de llenado
+            State := 99;
+         END_IF;
+
+      30: // Finalización del llenado
+         FillingValve := FALSE;
+         Timer(IN := TRUE, PT := T#1s);
+
+         IF Timer.Q THEN
+            Timer(IN := FALSE);
+            State := 40;
+         END_IF;
+
+      40: // Proceso completado
+         ProcessActive := FALSE;
+         ProcessComplete := TRUE;
+         ProcessTime := TIME() - StartTime;
+
+         // Mover envase a siguiente estación
+         ConveyorMotor := TRUE;
+         Timer(IN := TRUE, PT := T#3s);
+
+         IF Timer.Q THEN
+            Timer(IN := FALSE);
+            ConveyorMotor := FALSE;
+            State := 0; // Volver al estado inicial
+         END_IF;
+
+      99: // Estado de error
+         ProcessActive := FALSE;
+         FillingValve := FALSE;
+         ConveyorMotor := FALSE;
+
+         IF Reset THEN
+            State := 0;
+         END_IF;
+   END_CASE;
+
+   // Modo manual
+   IF ManualMode THEN
+      FillingValve := Start;
+      ConveyorMotor := FALSE;
+      ProcessActive := Start;
+   END_IF;
+
+   // Parada de emergencia
+   IF Stop THEN
+      FillingValve := FALSE;
+      ConveyorMotor := FALSE;
+      ProcessActive := FALSE;
+      State := 0;
+   END_IF;
+
+END_FUNCTION_BLOCK

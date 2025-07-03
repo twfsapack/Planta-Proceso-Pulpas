@@ -1,0 +1,103 @@
+TYPE "UDT_ProcessData"
+VERSION : 0.1
+   STRUCT
+      // Datos del proceso de llenado
+      Filling : Struct
+         Active : Bool;   // Proceso activo
+         Complete : Bool;   // Proceso completado
+         Volume : Real;   // Volumen actual (L)
+         SetVolume : Real;   // Volumen objetivo (L)
+         FlowRate : Real;   // Caudal actual (L/min)
+         Level : Real;   // Nivel del envase (%)
+         ProcessTime : Time;   // Tiempo de proceso
+         AlarmCode : Int;   // Código de alarma
+      END_STRUCT;
+
+      // Datos del proceso de tapado
+      Capping : Struct
+         Active : Bool;   // Proceso activo
+         Complete : Bool;   // Proceso completado
+         Torque : Real;   // Torque actual (Nm)
+         SetTorque : Real;   // Torque objetivo (Nm)
+         Position : Real;   // Posición actual (mm)
+         CapPresent : Bool;   // Tapa presente
+         QualityOK : Bool;   // Control de calidad OK
+         ProcessTime : Time;   // Tiempo de proceso
+         AlarmCode : Int;   // Código de alarma
+         RetryCount : Int;   // Contador de reintentos
+      END_STRUCT;
+
+      // Datos del proceso de túnel de encogido
+      ShrinkTunnel : Struct
+         Active : Bool;   // Proceso activo
+         Complete : Bool;   // Proceso completado
+         Temperature1 : Real;   // Temperatura zona 1 (°C)
+         Temperature2 : Real;   // Temperatura zona 2 (°C)
+         Temperature3 : Real;   // Temperatura zona 3 (°C)
+         AvgTemperature : Real;   // Temperatura promedio (°C)
+         SetTemperature : Real;   // Temperatura objetivo (°C)
+         ProcessTime : Time;   // Tiempo de proceso actual
+         SetProcessTime : Time;   // Tiempo de proceso objetivo
+         ConveyorSpeed : Real;   // Velocidad de banda (m/min)
+         QualityOK : Bool;   // Control de calidad OK
+         AlarmCode : Int;   // Código de alarma
+         PreHeatComplete : Bool;   // Precalentamiento completo
+      END_STRUCT;
+
+      // Datos generales del sistema
+      System : Struct
+         AutoMode : Bool;   // Modo automático
+         ManualMode : Bool;   // Modo manual
+         EmergencyStop : Bool;   // Parada de emergencia
+         SystemReady : Bool;   // Sistema listo
+         ProductionCount : DInt;   // Contador de producción
+         TotalAlarms : Int;   // Total de alarmas
+         LastAlarmCode : Int;   // Último código de alarma
+         LastAlarmTime : Time;   // Tiempo de última alarma
+         CycleTime : Time;   // Tiempo de ciclo
+         Efficiency : Real;   // Eficiencia del proceso (%)
+      END_STRUCT;
+
+      // Estados de sensores
+      Sensors : Struct
+         ContainerPresent_Filling : Bool;   // Sensor envase en llenado
+         ContainerPresent_Capping : Bool;   // Sensor envase en tapado
+         ContainerPresent_Tunnel : Bool;   // Sensor envase en túnel
+         LevelSensor : Real;   // Sensor de nivel (%)
+         FlowSensor : Real;   // Sensor de flujo (L/min)
+         TorqueSensor : Real;   // Sensor de torque (Nm)
+         PositionSensor : Real;   // Sensor de posición (mm)
+         CapSensor : Bool;   // Sensor de tapa
+         TempSensor1 : Real;   // Sensor temperatura zona 1
+         TempSensor2 : Real;   // Sensor temperatura zona 2
+         TempSensor3 : Real;   // Sensor temperatura zona 3
+      END_STRUCT;
+
+      // Estados de actuadores
+      Actuators : Struct
+         FillingValve : Bool;   // Válvula de llenado
+         CapFeeder : Bool;   // Alimentador de tapas
+         CappingMotor : Bool;   // Motor de tapado
+         ConveyorMotor_Filling : Bool;   // Motor banda llenado
+         ConveyorMotor_Capping : Bool;   // Motor banda tapado
+         ConveyorMotor_Tunnel : Bool;   // Motor banda túnel
+         Heater1 : Bool;   // Calentador zona 1
+         Heater2 : Bool;   // Calentador zona 2
+         Heater3 : Bool;   // Calentador zona 3
+         TunnelFan : Bool;   // Ventilador túnel
+      END_STRUCT;
+
+      // Parámetros de receta
+      Recipe : Struct
+         ProductType : Int;   // Tipo de producto
+         VolumeSetpoint : Real;   // Volumen objetivo (L)
+         TorqueSetpoint : Real;   // Torque objetivo (Nm)
+         TemperatureSetpoint : Real;   // Temperatura objetivo (°C)
+         ProcessTimeSetpoint : Time;   // Tiempo proceso objetivo
+         ConveyorSpeedSetpoint : Real;   // Velocidad banda objetivo
+         QualityTolerance : Real;   // Tolerancia de calidad (%)
+      END_STRUCT;
+
+   END_STRUCT;
+
+END_TYPE

@@ -1,0 +1,251 @@
+FUNCTION_BLOCK "FB_ShrinkTunnelProcess"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT 
+      Start : Bool;   // Comando de inicio del proceso
+      Stop : Bool;   // Comando de parada del proceso
+      Reset : Bool;   // Reset de alarmas
+      ManualMode : Bool;   // Modo manual
+      ContainerPresent : Bool;   // Sensor de presencia de envase
+      TempSensor1 : Real;   // Sensor de temperatura zona 1 (°C)
+      TempSensor2 : Real;   // Sensor de temperatura zona 2 (°C)
+      TempSensor3 : Real;   // Sensor de temperatura zona 3 (°C)
+      SetTemperature : Real;   // Temperatura objetivo (°C)
+      SetProcessTime : Time;   // Tiempo de proceso objetivo
+      ConveyorSpeed : Real;   // Velocidad de banda (m/min)
+   END_VAR
+
+   VAR_OUTPUT 
+      Heater1 : Bool;   // Calentador zona 1
+      Heater2 : Bool;   // Calentador zona 2
+      Heater3 : Bool;   // Calentador zona 3
+      ConveyorMotor : Bool;   // Motor de banda transportadora
+      TunnelFan : Bool;   // Ventilador del túnel
+      ProcessActive : Bool;   // Proceso activo
+      ProcessComplete : Bool;   // Proceso completado
+      AlarmActive : Bool;   // Alarma activa
+      AvgTemperature : Real;   // Temperatura promedio
+      ProcessTime : Time;   // Tiempo de proceso actual
+      QualityOK : Bool;   // Control de calidad OK
+   END_VAR
+
+   VAR 
+      State : Int := 0;   // Estado del proceso
+      Timer : TON;   // Temporizador principal
+      PreHeatTimer : TON;   // Temporizador de precalentamiento
+      StartTime : Time;   // Tiempo de inicio
+      AlarmCode : Int := 0;   // Código de alarma
+      TempReached : Bool := FALSE;   // Temperatura alcanzada
+      PreHeatComplete : Bool := FALSE;   // Precalentamiento completo
+      ProcessTimer : TON;   // Temporizador del proceso
+   END_VAR
+
+   VAR_TEMP 
+      TempTime : Time;
+      TempDiff1, TempDiff2, TempDiff3 : Real;
+   END_VAR
+
+BEGIN
+   // Reset de alarmas
+   IF Reset THEN
+      AlarmActive := FALSE;
+      AlarmCode := 0;
+      State := 0;
+      ProcessComplete := FALSE;
+      QualityOK := FALSE;
+      PreHeatComplete := FALSE;
+   END_IF;
+
+   // Cálculo de temperatura promedio
+   AvgTemperature := (TempSensor1 + TempSensor2 + TempSensor3) / 3.0;
+
+   // Verificación de condiciones de seguridad
+   IF AvgTemperature > (SetTemperature * 1.2) THEN
+      AlarmActive := TRUE;
+      AlarmCode := 3001; // Sobre-temperatura
+      State := 99;
+   END_IF;
+
+   // Verificación de sensores
+   IF TempSensor1 < -10.0 OR TempSensor1 > 300.0 OR
+      TempSensor2 < -10.0 OR TempSensor2 > 300.0 OR
+      TempSensor3 < -10.0 OR TempSensor3 > 300.0 THEN
+      AlarmActive := TRUE;
+      AlarmCode := 3002; // Falla de sensor de temperatura
+      State := 99;
+   END_IF;
+
+   // Máquina de estados del proceso de túnel de encogido
+   CASE State OF
+      0: // Estado inicial - Espera
+         ProcessActive := FALSE;
+         ProcessComplete := FALSE;
+         Heater1 := FALSE;
+         Heater2 := FALSE;
+         Heater3 := FALSE;
+         ConveyorMotor := FALSE;
+         TunnelFan := FALSE;
+         TempReached := FALSE;
+         QualityOK := FALSE;
+
+         IF Start AND NOT AlarmActive THEN
+            State := 10;
+            StartTime := TIME();
+         END_IF;
+
+      10: // Precalentamiento del túnel
+         ProcessActive := TRUE;
+         TunnelFan := TRUE;
+
+         // Control de calentadores por zona
+         TempDiff1 := SetTemperature - TempSensor1;
+         TempDiff2 := SetTemperature - TempSensor2;
+         TempDiff3 := SetTemperature - TempSensor3;
+
+         Heater1 := TempDiff1 > 2.0;
+         Heater2 := TempDiff2 > 2.0;
+         Heater3 := TempDiff3 > 2.0;
+
+         // Verificar si se alcanzó la temperatura
+         IF AvgTemperature >= (SetTemperature * 0.95) THEN
+            TempReached := TRUE;
+            PreHeatTimer(IN := TRUE, PT := T#30s); // Estabilización
+
+            IF PreHeatTimer.Q THEN
+               PreHeatComplete := TRUE;
+               State := 20;
+            END_IF;
+         END_IF;
+
+         // Timeout de precalentamiento (10 minutos)
+         TempTime := TIME() - StartTime;
+         IF TempTime > T#10m THEN
+            AlarmActive := TRUE;
+            AlarmCode := 3003; // Timeout de precalentamiento
+            State := 99;
+         END_IF;
+
+      20: // Espera de envase
+         // Mantener temperatura
+         TempDiff1 := SetTemperature - TempSensor1;
+         TempDiff2 := SetTemperature - TempSensor2;
+         TempDiff3 := SetTemperature - TempSensor3;
+
+         Heater1 := TempDiff1 > 1.0;
+         Heater2 := TempDiff2 > 1.0;
+         Heater3 := TempDiff3 > 1.0;
+
+         IF ContainerPresent THEN
+            State := 30;
+            StartTime := TIME(); // Reiniciar tiempo para el proceso
+         END_IF;
+
+      30: // Proceso de encogido
+         ConveyorMotor := TRUE;
+
+         // Mantener temperatura durante el proceso
+         TempDiff1 := SetTemperature - TempSensor1;
+         TempDiff2 := SetTemperature - TempSensor2;
+         TempDiff3 := SetTemperature - TempSensor3;
+
+         Heater1 := TempDiff1 > 1.0;
+         Heater2 := TempDiff2 > 1.0;
+         Heater3 := TempDiff3 > 1.0;
+
+         // Temporizador del proceso
+         ProcessTimer(IN := TRUE, PT := SetProcessTime);
+         ProcessTime := ProcessTimer.ET;
+
+         IF ProcessTimer.Q THEN
+            ProcessTimer(IN := FALSE);
+            State := 40;
+         END_IF;
+
+         // Verificar que la temperatura se mantenga estable
+         IF AvgTemperature < (SetTemperature * 0.9) THEN
+            AlarmActive := TRUE;
+            AlarmCode := 3004; // Pérdida de temperatura durante proceso
+            State := 99;
+         END_IF;
+
+      40: // Enfriamiento y finalización
+         // Apagar calentadores
+         Heater1 := FALSE;
+         Heater2 := FALSE;
+         Heater3 := FALSE;
+
+         // Mantener ventilador para enfriamiento
+         TunnelFan := TRUE;
+         ConveyorMotor := TRUE;
+
+         Timer(IN := TRUE, PT := T#10s); // Tiempo de enfriamiento
+
+         IF Timer.Q THEN
+            Timer(IN := FALSE);
+            State := 50;
+         END_IF;
+
+      50: // Control de calidad
+         // Verificar que el proceso se completó correctamente
+         IF ProcessTime >= (SetProcessTime * 0.95) AND 
+            AvgTemperature >= (SetTemperature * 0.8) THEN
+            QualityOK := TRUE;
+            State := 60;
+         ELSE
+            AlarmActive := TRUE;
+            AlarmCode := 3005; // Falla de calidad en encogido
+            State := 99;
+         END_IF;
+
+      60: // Proceso completado
+         ProcessActive := FALSE;
+         ProcessComplete := TRUE;
+         ProcessTime := TIME() - StartTime;
+         TunnelFan := FALSE;
+
+         // Mover envase a siguiente estación
+         ConveyorMotor := TRUE;
+         Timer(IN := TRUE, PT := T#5s);
+
+         IF Timer.Q THEN
+            Timer(IN := FALSE);
+            ConveyorMotor := FALSE;
+            State := 0; // Volver al estado inicial
+         END_IF;
+
+      99: // Estado de error
+         ProcessActive := FALSE;
+         Heater1 := FALSE;
+         Heater2 := FALSE;
+         Heater3 := FALSE;
+         ConveyorMotor := FALSE;
+         TunnelFan := FALSE;
+         QualityOK := FALSE;
+
+         IF Reset THEN
+            State := 0;
+         END_IF;
+   END_CASE;
+
+   // Modo manual
+   IF ManualMode THEN
+      Heater1 := Start;
+      Heater2 := Start;
+      Heater3 := Start;
+      TunnelFan := Start;
+      ConveyorMotor := FALSE;
+      ProcessActive := Start;
+   END_IF;
+
+   // Parada de emergencia
+   IF Stop THEN
+      Heater1 := FALSE;
+      Heater2 := FALSE;
+      Heater3 := FALSE;
+      ConveyorMotor := FALSE;
+      TunnelFan := FALSE;
+      ProcessActive := FALSE;
+      State := 0;
+   END_IF;
+
+END_FUNCTION_BLOCK

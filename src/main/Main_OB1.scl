@@ -1,0 +1,198 @@
+ORGANIZATION_BLOCK "Main_OB1"
+TITLE = Programa principal - Planta Proceso Pulpas
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+
+VAR_TEMP 
+   RetVal : Int;
+END_VAR
+
+BEGIN
+   // ========================================
+   // PROGRAMA PRINCIPAL - PLANTA PROCESO PULPAS
+   // Sistema de control para procesamiento de pulpas
+   // ========================================
+
+   // Lectura de entradas físicas
+   "ProcessData".Sensors.ContainerPresent_Filling := "I_Container_Filling";
+   "ProcessData".Sensors.ContainerPresent_Capping := "I_Container_Capping";
+   "ProcessData".Sensors.ContainerPresent_Tunnel := "I_Container_Tunnel";
+   "ProcessData".Sensors.LevelSensor := "AI_Level_Sensor";
+   "ProcessData".Sensors.FlowSensor := "AI_Flow_Sensor";
+   "ProcessData".Sensors.TorqueSensor := "AI_Torque_Sensor";
+   "ProcessData".Sensors.PositionSensor := "AI_Position_Sensor";
+   "ProcessData".Sensors.CapSensor := "I_Cap_Present";
+   "ProcessData".Sensors.TempSensor1 := "AI_Temp_Zone1";
+   "ProcessData".Sensors.TempSensor2 := "AI_Temp_Zone2";
+   "ProcessData".Sensors.TempSensor3 := "AI_Temp_Zone3";
+
+   // Lectura de comandos del HMI
+   "ProcessData".System.AutoMode := "HMI_Auto_Mode";
+   "ProcessData".System.ManualMode := "HMI_Manual_Mode";
+   "ProcessData".System.EmergencyStop := "I_Emergency_Stop";
+
+   // Verificación de sistema listo
+   "ProcessData".System.SystemReady := NOT "ProcessData".System.EmergencyStop AND
+                                       ("ProcessData".System.AutoMode OR "ProcessData".System.ManualMode);
+
+   // ========================================
+   // LLAMADA A BLOQUES DE FUNCIÓN
+   // ========================================
+
+   // Proceso de Llenado
+   "FB_Filling_Instance"(
+      Start := "HMI_Start_Filling" AND "ProcessData".System.SystemReady,
+      Stop := "HMI_Stop_Filling" OR "ProcessData".System.EmergencyStop,
+      Reset := "HMI_Reset_Filling",
+      ManualMode := "ProcessData".System.ManualMode,
+      SetVolume := "ProcessData".Recipe.VolumeSetpoint,
+      ContainerPresent := "ProcessData".Sensors.ContainerPresent_Filling,
+      LevelSensor := "ProcessData".Sensors.LevelSensor,
+      FlowSensor := "ProcessData".Sensors.FlowSensor,
+
+      FillingValve => "ProcessData".Actuators.FillingValve,
+      ConveyorMotor => "ProcessData".Actuators.ConveyorMotor_Filling,
+      ProcessActive => "ProcessData".Filling.Active,
+      ProcessComplete => "ProcessData".Filling.Complete,
+      AlarmActive => "M_Alarm_Filling",
+      CurrentVolume => "ProcessData".Filling.Volume,
+      ProcessTime => "ProcessData".Filling.ProcessTime
+   );
+
+   // Proceso de Tapado
+   "FB_Capping_Instance"(
+      Start := ("ProcessData".Filling.Complete OR "HMI_Start_Capping") AND "ProcessData".System.SystemReady,
+      Stop := "HMI_Stop_Capping" OR "ProcessData".System.EmergencyStop,
+      Reset := "HMI_Reset_Capping",
+      ManualMode := "ProcessData".System.ManualMode,
+      ContainerPresent := "ProcessData".Sensors.ContainerPresent_Capping,
+      CapPresent := "ProcessData".Sensors.CapSensor,
+      TorqueSensor := "ProcessData".Sensors.TorqueSensor,
+      PositionSensor := "ProcessData".Sensors.PositionSensor,
+      SetTorque := "ProcessData".Recipe.TorqueSetpoint,
+
+      CapFeeder => "ProcessData".Actuators.CapFeeder,
+      CappingMotor => "ProcessData".Actuators.CappingMotor,
+      ConveyorMotor => "ProcessData".Actuators.ConveyorMotor_Capping,
+      ProcessActive => "ProcessData".Capping.Active,
+      ProcessComplete => "ProcessData".Capping.Complete,
+      AlarmActive => "M_Alarm_Capping",
+      CurrentTorque => "ProcessData".Capping.Torque,
+      ProcessTime => "ProcessData".Capping.ProcessTime,
+      QualityOK => "ProcessData".Capping.QualityOK
+   );
+
+   // Proceso de Túnel de Encogido
+   "FB_ShrinkTunnel_Instance"(
+      Start := ("ProcessData".Capping.Complete OR "HMI_Start_Tunnel") AND "ProcessData".System.SystemReady,
+      Stop := "HMI_Stop_Tunnel" OR "ProcessData".System.EmergencyStop,
+      Reset := "HMI_Reset_Tunnel",
+      ManualMode := "ProcessData".System.ManualMode,
+      ContainerPresent := "ProcessData".Sensors.ContainerPresent_Tunnel,
+      TempSensor1 := "ProcessData".Sensors.TempSensor1,
+      TempSensor2 := "ProcessData".Sensors.TempSensor2,
+      TempSensor3 := "ProcessData".Sensors.TempSensor3,
+      SetTemperature := "ProcessData".Recipe.TemperatureSetpoint,
+      SetProcessTime := "ProcessData".Recipe.ProcessTimeSetpoint,
+      ConveyorSpeed := "ProcessData".Recipe.ConveyorSpeedSetpoint,
+
+      Heater1 => "ProcessData".Actuators.Heater1,
+      Heater2 => "ProcessData".Actuators.Heater2,
+      Heater3 => "ProcessData".Actuators.Heater3,
+      ConveyorMotor => "ProcessData".Actuators.ConveyorMotor_Tunnel,
+      TunnelFan => "ProcessData".Actuators.TunnelFan,
+      ProcessActive => "ProcessData".ShrinkTunnel.Active,
+      ProcessComplete => "ProcessData".ShrinkTunnel.Complete,
+      AlarmActive => "M_Alarm_Tunnel",
+      AvgTemperature => "ProcessData".ShrinkTunnel.AvgTemperature,
+      ProcessTime => "ProcessData".ShrinkTunnel.ProcessTime,
+      QualityOK => "ProcessData".ShrinkTunnel.QualityOK
+   );
+
+   // ========================================
+   // LÓGICA DE CONTROL GENERAL
+   // ========================================
+
+   // Contador de producción
+   IF "ProcessData".ShrinkTunnel.Complete AND "ProcessData".ShrinkTunnel.QualityOK THEN
+      "ProcessData".System.ProductionCount := "ProcessData".System.ProductionCount + 1;
+   END_IF;
+
+   // Gestión de alarmas
+   "ProcessData".System.TotalAlarms := 0;
+   IF "M_Alarm_Filling" THEN
+      "ProcessData".System.TotalAlarms := "ProcessData".System.TotalAlarms + 1;
+      "ProcessData".System.LastAlarmCode := 1000;
+      "ProcessData".System.LastAlarmTime := TIME();
+   END_IF;
+
+   IF "M_Alarm_Capping" THEN
+      "ProcessData".System.TotalAlarms := "ProcessData".System.TotalAlarms + 1;
+      "ProcessData".System.LastAlarmCode := 2000;
+      "ProcessData".System.LastAlarmTime := TIME();
+   END_IF;
+
+   IF "M_Alarm_Tunnel" THEN
+      "ProcessData".System.TotalAlarms := "ProcessData".System.TotalAlarms + 1;
+      "ProcessData".System.LastAlarmCode := 3000;
+      "ProcessData".System.LastAlarmTime := TIME();
+   END_IF;
+
+   // Cálculo de eficiencia
+   IF "ProcessData".System.ProductionCount > 0 THEN
+      "ProcessData".System.Efficiency := 
+         (DINT_TO_REAL("ProcessData".System.ProductionCount) / 
+          DINT_TO_REAL("ProcessData".System.ProductionCount + "ProcessData".System.TotalAlarms)) * 100.0;
+   ELSE
+      "ProcessData".System.Efficiency := 0.0;
+   END_IF;
+
+   // ========================================
+   // ESCRITURA DE SALIDAS FÍSICAS
+   // ========================================
+
+   // Salidas del proceso de llenado
+   "Q_Filling_Valve" := "ProcessData".Actuators.FillingValve;
+   "Q_Conveyor_Filling" := "ProcessData".Actuators.ConveyorMotor_Filling;
+
+   // Salidas del proceso de tapado
+   "Q_Cap_Feeder" := "ProcessData".Actuators.CapFeeder;
+   "Q_Capping_Motor" := "ProcessData".Actuators.CappingMotor;
+   "Q_Conveyor_Capping" := "ProcessData".Actuators.ConveyorMotor_Capping;
+
+   // Salidas del proceso de túnel
+   "Q_Heater_Zone1" := "ProcessData".Actuators.Heater1;
+   "Q_Heater_Zone2" := "ProcessData".Actuators.Heater2;
+   "Q_Heater_Zone3" := "ProcessData".Actuators.Heater3;
+   "Q_Conveyor_Tunnel" := "ProcessData".Actuators.ConveyorMotor_Tunnel;
+   "Q_Tunnel_Fan" := "ProcessData".Actuators.TunnelFan;
+
+   // Indicadores de estado
+   "Q_Process_Active" := "ProcessData".Filling.Active OR 
+                         "ProcessData".Capping.Active OR 
+                         "ProcessData".ShrinkTunnel.Active;
+
+   "Q_System_Ready" := "ProcessData".System.SystemReady;
+   "Q_Alarm_General" := "M_Alarm_Filling" OR "M_Alarm_Capping" OR "M_Alarm_Tunnel";
+
+   // ========================================
+   // DIAGNÓSTICO Y MONITOREO
+   // ========================================
+
+   // Actualizar datos de proceso para HMI
+   "ProcessData".Filling.SetVolume := "ProcessData".Recipe.VolumeSetpoint;
+   "ProcessData".Filling.FlowRate := "ProcessData".Sensors.FlowSensor;
+   "ProcessData".Filling.Level := "ProcessData".Sensors.LevelSensor;
+
+   "ProcessData".Capping.SetTorque := "ProcessData".Recipe.TorqueSetpoint;
+   "ProcessData".Capping.Position := "ProcessData".Sensors.PositionSensor;
+   "ProcessData".Capping.CapPresent := "ProcessData".Sensors.CapSensor;
+
+   "ProcessData".ShrinkTunnel.Temperature1 := "ProcessData".Sensors.TempSensor1;
+   "ProcessData".ShrinkTunnel.Temperature2 := "ProcessData".Sensors.TempSensor2;
+   "ProcessData".ShrinkTunnel.Temperature3 := "ProcessData".Sensors.TempSensor3;
+   "ProcessData".ShrinkTunnel.SetTemperature := "ProcessData".Recipe.TemperatureSetpoint;
+   "ProcessData".ShrinkTunnel.SetProcessTime := "ProcessData".Recipe.ProcessTimeSetpoint;
+   "ProcessData".ShrinkTunnel.ConveyorSpeed := "ProcessData".Recipe.ConveyorSpeedSetpoint;
+
+END_ORGANIZATION_BLOCK
